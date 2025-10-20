@@ -125,6 +125,7 @@ func TestServer_serveUpdate(t *testing.T) {
 			// Validate response
 			rr := tt.args.w.(*httptest.ResponseRecorder)
 			res := rr.Result()
+			defer res.Body.Close()
 			if res.StatusCode != tt.wantStatusCode {
 				t.Fatalf("status = %d, want %d", res.StatusCode, tt.wantStatusCode)
 			}
