@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"github.com/xGuthub/metrics-collection-service/internal/service"
 	"log"
 	"math"
 	"net/http"
@@ -8,12 +9,12 @@ import (
 )
 
 type MetricsHandler struct {
-	metricsService *MetricsService
+	metricsService *service.MetricsService
 }
 
-func NewMetricsHandler() *MetricsHandler {
+func NewMetricsHandler(metricsService *service.MetricsService) *MetricsHandler {
 	return &MetricsHandler{
-		metricsService: NewMetricsService(),
+		metricsService: metricsService,
 	}
 }
 

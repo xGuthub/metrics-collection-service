@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"github.com/xGuthub/metrics-collection-service/internal/repository"
+	"github.com/xGuthub/metrics-collection-service/internal/service"
 	"net/http"
 	"strings"
 
@@ -13,8 +15,10 @@ type Server struct {
 }
 
 func NewServer() *Server {
+	mStorage := repository.NewMemStorage()
+	mService := service.NewMetricsService(mStorage)
 	return &Server{
-		mHandler: handler.NewMetricsHandler(),
+		mHandler: handler.NewMetricsHandler(mService),
 	}
 }
 
