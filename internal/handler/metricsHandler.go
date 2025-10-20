@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"math"
 	"net/http"
 	"strconv"
@@ -24,12 +25,14 @@ func (mh *MetricsHandler) HandleUpdate(mType, name, rawVal string) (code int, st
 			return http.StatusBadRequest, "bad gauge value"
 		}
 		mh.metricsService.UpdateGauge(name, val)
+		log.Printf("report counter %s success: %v", name, val)
 	case "counter":
 		delta, err := strconv.ParseInt(rawVal, 10, 64)
 		if err != nil {
 			return http.StatusBadRequest, "bad counter value"
 		}
 		mh.metricsService.IncrementCounter(name, delta)
+		log.Printf("report counter %s success: %d", name, delta)
 	default:
 		return http.StatusBadRequest, "bad metric type"
 	}
