@@ -1,13 +1,6 @@
-package handler
+package repository
 
 import "sync"
-
-type Storage interface {
-	UpdateGauge(name string, value float64)
-	UpdateCounter(name string, delta int64)
-	GetGauge(name string) (float64, bool)
-	GetCounter(name string) (int64, bool)
-}
 
 type MemStorage struct {
 	mu       sync.RWMutex
