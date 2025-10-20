@@ -4,7 +4,6 @@ import (
 	"github.com/xGuthub/metrics-collection-service/internal/handler"
 	"github.com/xGuthub/metrics-collection-service/internal/repository"
 	"github.com/xGuthub/metrics-collection-service/internal/service"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -127,12 +126,7 @@ func TestServer_serveUpdate(t *testing.T) {
 			rr := tt.args.w.(*httptest.ResponseRecorder)
 			res := rr.Result()
 
-			defer func(Body io.ReadCloser) {
-				err := Body.Close()
-				if err != nil {
-					panic("Error when close body.")
-				}
-			}(res.Body)
+			defer res.Body.Close()
 
 			if res.StatusCode != tt.wantStatusCode {
 				t.Fatalf("status = %d, want %d", res.StatusCode, tt.wantStatusCode)
