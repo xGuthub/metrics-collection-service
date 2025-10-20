@@ -2,34 +2,28 @@ package main
 
 import (
 	"errors"
-	"github.com/xGuthub/metrics-collection-service/internal/repository"
-	"github.com/xGuthub/metrics-collection-service/internal/service"
 	"net/http"
 	"strings"
-
-	"github.com/xGuthub/metrics-collection-service/internal/handler"
 )
 
+type UpdateHandler interface {
+	HandleUpdate(mType, name, rawVal string) (code int, status string)
+}
+
 type Server struct {
-	mHandler *handler.MetricsHandler
+	mHandler UpdateHandler
 }
 
-func NewServer() *Server {
-	mStorage := repository.NewMemStorage()
-	mService := service.NewMetricsService(mStorage)
-	return &Server{
-		mHandler: handler.NewMetricsHandler(mService),
-	}
+func NewServer(h UpdateHandler) *Server {
+	return &Server{mHandler: h}
 }
 
-// writePlain — единообразная отправка текстового ответа.
 func writePlain(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(status)
 	_, _ = w.Write([]byte(msg))
 }
 
-// validateContentType проверяет Content-Type, если он передан.
 func validateContentType(r *http.Request) error {
 	ct := r.Header.Get("Content-Type")
 	if ct == "" {
@@ -95,7 +89,6 @@ func (s *Server) serveUpdate(w http.ResponseWriter, r *http.Request) {
 	writePlain(w, code, status)
 }
 
-// rootHandler — единая точка входа без шаблонов ServeMux, чтобы исключить редиректы.
 func (s *Server) rootHandler(w http.ResponseWriter, r *http.Request) {
 	// Обрабатываем только /update/... остальное — 404
 	if strings.HasPrefix(r.URL.Path, "/update/") || r.URL.Path == "/update" || r.URL.Path == "/update/" {
