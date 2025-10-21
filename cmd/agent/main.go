@@ -11,13 +11,11 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/xGuthub/metrics-collection-service/internal/config"
 )
 
 const (
-	serverAddr     = "http://localhost:8080"
-	pollInterval   = 2 * time.Second
-	reportInterval = 10 * time.Second
-	httpTimeout    = 5 * time.Second
+	httpTimeout = 5 * time.Second
 )
 
 type metricsStore struct {
@@ -96,7 +94,7 @@ func collectRuntimeMetrics(store *metricsStore) {
 	store.setGauge("RandomValue", rand.Float64())
 }
 
-func reportMetrics(ctx context.Context, client *resty.Client, store *metricsStore) {
+func reportMetrics(ctx context.Context, client *resty.Client, store *metricsStore, baseURL string) {
 	gauges, counters := store.getSnapshot()
 	// Send gauges
 	for name, val := range gauges {
@@ -106,7 +104,7 @@ func reportMetrics(ctx context.Context, client *resty.Client, store *metricsStor
 		default:
 		}
 		valueStr := strconv.FormatFloat(val, 'g', -1, 64)
-		url := fmt.Sprintf("%s/update/gauge/%s/%s", serverAddr, name, valueStr)
+		url := fmt.Sprintf("%s/update/gauge/%s/%s", baseURL, name, valueStr)
 		resp, err := client.R().
 			SetContext(ctx).
 			SetHeader("Content-Type", "text/plain").
@@ -126,7 +124,7 @@ func reportMetrics(ctx context.Context, client *resty.Client, store *metricsStor
 			return
 		default:
 		}
-		url := fmt.Sprintf("%s/update/counter/%s/%d", serverAddr, name, val)
+		url := fmt.Sprintf("%s/update/counter/%s/%d", baseURL, name, val)
 		resp, err := client.R().
 			SetContext(ctx).
 			SetHeader("Content-Type", "text/plain").
@@ -141,6 +139,12 @@ func reportMetrics(ctx context.Context, client *resty.Client, store *metricsStor
 }
 
 func main() {
+	// Load config from flags: -a, -r, -p
+	cfg, err := config.LoadAgentConfigFromFlags()
+	if err != nil {
+		log.Fatalf("failed to parse flags: %v", err)
+	}
+
 	store := newMetricsStore()
 	client := resty.New().SetTimeout(httpTimeout)
 
@@ -149,13 +153,15 @@ func main() {
 	store.incCounter("PollCount", 1)
 
 	// Tickers
-	pollTicker := time.NewTicker(pollInterval)
-	reportTicker := time.NewTicker(reportInterval)
+	pollTicker := time.NewTicker(cfg.PollInterval)
+	reportTicker := time.NewTicker(cfg.ReportInterval)
 	defer pollTicker.Stop()
 	defer reportTicker.Stop()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	baseURL := fmt.Sprintf("http://%s", cfg.Address)
 
 	for {
 		select {
@@ -163,7 +169,7 @@ func main() {
 			collectRuntimeMetrics(store)
 			store.incCounter("PollCount", 1)
 		case <-reportTicker.C:
-			reportMetrics(ctx, client, store)
+			reportMetrics(ctx, client, store, baseURL)
 		case <-ctx.Done():
 			return
 		}

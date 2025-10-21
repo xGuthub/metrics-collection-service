@@ -221,7 +221,7 @@ func TestServer_serveGet(t *testing.T) {
 			},
 			args:           args{w: httptest.NewRecorder(), r: httptest.NewRequest(http.MethodGet, "/value/gauge/temperature", nil)},
 			wantStatusCode: http.StatusOK,
-			wantBody:       "12.340",
+			wantBody:       "12.34",
 			wantCT:         "text/plain; charset=utf-8",
 		},
 		{

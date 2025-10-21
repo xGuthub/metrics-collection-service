@@ -126,7 +126,7 @@ func TestMetricsHandler_HandleGet(t *testing.T) {
 				s.UpdateGauge("temperature", 12.34)
 			},
 			wantCode:  http.StatusOK,
-			wantValue: "12.340",
+			wantValue: "12.34",
 		},
 		{
 			name:      "gauge not found",

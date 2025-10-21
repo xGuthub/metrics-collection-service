@@ -53,7 +53,7 @@ func (mh *MetricsHandler) HandleGet(mType, name string) (code int, result string
 		if !exists {
 			return http.StatusNotFound, "gauge not found"
 		}
-		val = strconv.FormatFloat(v, 'f', 3, 64)
+		val = strconv.FormatFloat(v, 'g', -1, 64)
 		log.Printf("get gauge %s success: %s", name, val)
 	case "counter":
 		v, exists := mh.metricsService.GetCounter(name)
@@ -93,7 +93,7 @@ func (mh *MetricsHandler) HandleHomePage() (code int, body string) {
 		body += "<li><em>No gauges</em></li>"
 	} else {
 		for _, name := range gNames {
-			body += fmt.Sprintf("<li>%s: %s</li>", name, strconv.FormatFloat(gauges[name], 'f', 3, 64))
+			body += fmt.Sprintf("<li>%s: %s</li>", name, strconv.FormatFloat(gauges[name], 'g', -1, 64))
 		}
 	}
 	body += "</ul>"
