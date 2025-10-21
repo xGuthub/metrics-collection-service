@@ -40,6 +40,7 @@ func (mh *MetricsHandler) HandleUpdate(mType, name, rawVal string) (code int, st
 	default:
 		return http.StatusBadRequest, "bad metric type"
 	}
+
 	return http.StatusOK, "OK"
 }
 
@@ -64,6 +65,7 @@ func (mh *MetricsHandler) HandleGet(mType, name string) (code int, result string
 	default:
 		return http.StatusBadRequest, "bad metric type"
 	}
+
 	return http.StatusOK, val
 }
 
