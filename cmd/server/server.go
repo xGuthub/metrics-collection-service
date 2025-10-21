@@ -2,34 +2,36 @@ package main
 
 import (
 	"errors"
-	"github.com/xGuthub/metrics-collection-service/internal/repository"
-	"github.com/xGuthub/metrics-collection-service/internal/service"
 	"net/http"
 	"strings"
-
-	"github.com/xGuthub/metrics-collection-service/internal/handler"
 )
 
+type UpdateHandler interface {
+	HandleUpdate(mType, name, rawVal string) (code int, status string)
+	HandleGet(mType, name string) (code int, result string)
+	HandleHomePage() (code int, body string)
+}
+
 type Server struct {
-	mHandler *handler.MetricsHandler
+	mHandler UpdateHandler
 }
 
-func NewServer() *Server {
-	mStorage := repository.NewMemStorage()
-	mService := service.NewMetricsService(mStorage)
-	return &Server{
-		mHandler: handler.NewMetricsHandler(mService),
-	}
+func NewServer(h UpdateHandler) *Server {
+	return &Server{mHandler: h}
 }
 
-// writePlain — единообразная отправка текстового ответа.
 func writePlain(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(status)
 	_, _ = w.Write([]byte(msg))
 }
 
-// validateContentType проверяет Content-Type, если он передан.
+func writeHTML(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(msg))
+}
+
 func validateContentType(r *http.Request) error {
 	ct := r.Header.Get("Content-Type")
 	if ct == "" {
@@ -40,28 +42,32 @@ func validateContentType(r *http.Request) error {
 	if !strings.HasPrefix(strings.ToLower(ct), "text/plain") {
 		return errors.New("unsupported media type")
 	}
+
 	return nil
 }
 
-// parsePath ожидает строго /update/{type}/{name}/{value}
+// parsePath ожидает строго /update/{type}/{name}/{value}.
 func parsePath(path string) (mType, name, value string, err error) {
 	// Исключаем возможные лишние слэши в конце без редиректов.
 	trimmed := strings.TrimSuffix(path, "/")
 	parts := strings.Split(trimmed, "/")
 	// Примеры:
 	// "" "update" "{type}" "{name}" "{value}"  -> len=5
-	if len(parts) != 5 || parts[1] != "update" {
+	if len(parts) != 4 && len(parts) != 5 {
 		return "", "", "", errors.New("not found")
 	}
 
 	mType = parts[2]
 	name = parts[3]
-	value = parts[4]
+	if len(parts) == 5 {
+		value = parts[4]
+	}
 
 	if name == "" {
 		// Специальный кейс из задания — 404 при отсутствии имени
 		return "", "", "", errors.New("missing name")
 	}
+
 	return mType, name, value, nil
 }
 
@@ -70,12 +76,14 @@ func (s *Server) serveUpdate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		writePlain(w, http.StatusMethodNotAllowed, "method not allowed")
+
 		return
 	}
 
 	// Content-Type
 	if err := validateContentType(r); err != nil {
 		writePlain(w, http.StatusUnsupportedMediaType, "unsupported media type: expected text/plain")
+
 		return
 	}
 
@@ -84,9 +92,11 @@ func (s *Server) serveUpdate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if err.Error() == "missing name" {
 			writePlain(w, http.StatusNotFound, "metric name is required")
+
 			return
 		}
 		writePlain(w, http.StatusNotFound, "not found")
+
 		return
 	}
 
@@ -95,12 +105,26 @@ func (s *Server) serveUpdate(w http.ResponseWriter, r *http.Request) {
 	writePlain(w, code, status)
 }
 
-// rootHandler — единая точка входа без шаблонов ServeMux, чтобы исключить редиректы.
-func (s *Server) rootHandler(w http.ResponseWriter, r *http.Request) {
-	// Обрабатываем только /update/... остальное — 404
-	if strings.HasPrefix(r.URL.Path, "/update/") || r.URL.Path == "/update" || r.URL.Path == "/update/" {
-		s.serveUpdate(w, r)
+func (s *Server) serveGet(w http.ResponseWriter, r *http.Request) {
+	mType, name, _, err := parsePath(r.URL.Path)
+	if err != nil {
+		if err.Error() == "missing name" {
+			writePlain(w, http.StatusNotFound, "metric name is required")
+
+			return
+		}
+		writePlain(w, http.StatusNotFound, "not found")
+
 		return
 	}
-	writePlain(w, http.StatusNotFound, "not found")
+
+	code, status := s.mHandler.HandleGet(mType, name)
+
+	writePlain(w, code, status)
+}
+
+func (s *Server) serveHome(w http.ResponseWriter, _ *http.Request) {
+	code, body := s.mHandler.HandleHomePage()
+
+	writeHTML(w, code, body)
 }

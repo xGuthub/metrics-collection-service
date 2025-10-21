@@ -5,6 +5,8 @@ type Storage interface {
 	UpdateCounter(name string, delta int64)
 	GetGauge(name string) (float64, bool)
 	GetCounter(name string) (int64, bool)
+	AllGauges() map[string]float64
+	AllCounters() map[string]int64
 }
 
 type MetricsService struct {
@@ -23,4 +25,20 @@ func (ms *MetricsService) IncrementCounter(name string, delta int64) {
 
 func (ms *MetricsService) UpdateGauge(name string, val float64) {
 	ms.storage.UpdateGauge(name, val)
+}
+
+func (ms *MetricsService) GetCounter(name string) (int64, bool) {
+	return ms.storage.GetCounter(name)
+}
+
+func (ms *MetricsService) GetGauge(name string) (float64, bool) {
+	return ms.storage.GetGauge(name)
+}
+
+func (ms *MetricsService) AllGauges() map[string]float64 {
+	return ms.storage.AllGauges()
+}
+
+func (ms *MetricsService) AllCounters() map[string]int64 {
+	return ms.storage.AllCounters()
 }

@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"net/http"
 	"runtime"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/go-resty/resty/v2"
 )
 
 const (
@@ -95,7 +96,7 @@ func collectRuntimeMetrics(store *metricsStore) {
 	store.setGauge("RandomValue", rand.Float64())
 }
 
-func reportMetrics(ctx context.Context, client *http.Client, store *metricsStore) {
+func reportMetrics(ctx context.Context, client *resty.Client, store *metricsStore) {
 	gauges, counters := store.getSnapshot()
 	// Send gauges
 	for name, val := range gauges {
@@ -106,19 +107,16 @@ func reportMetrics(ctx context.Context, client *http.Client, store *metricsStore
 		}
 		valueStr := strconv.FormatFloat(val, 'g', -1, 64)
 		url := fmt.Sprintf("%s/update/gauge/%s/%s", serverAddr, name, valueStr)
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, http.NoBody)
-		if err != nil {
-			log.Printf("build request failed for gauge %s: %v", name, err)
-			continue
-		}
-		req.Header.Set("Content-Type", "text/plain")
-		resp, err := client.Do(req)
+		resp, err := client.R().
+			SetContext(ctx).
+			SetHeader("Content-Type", "text/plain").
+			Post(url)
 		if err != nil {
 			log.Printf("report gauge %s failed: %v", name, err)
 			continue
 		}
 		log.Printf("report gauge %s success: %s", name, valueStr)
-		_ = resp.Body.Close()
+		_ = resp // no body to read; Resty manages resources
 	}
 
 	// Send counters
@@ -129,25 +127,22 @@ func reportMetrics(ctx context.Context, client *http.Client, store *metricsStore
 		default:
 		}
 		url := fmt.Sprintf("%s/update/counter/%s/%d", serverAddr, name, val)
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, http.NoBody)
-		if err != nil {
-			log.Printf("build request failed for counter %s: %v", name, err)
-			continue
-		}
-		req.Header.Set("Content-Type", "text/plain")
-		resp, err := client.Do(req)
+		resp, err := client.R().
+			SetContext(ctx).
+			SetHeader("Content-Type", "text/plain").
+			Post(url)
 		if err != nil {
 			log.Printf("report counter %s failed: %v", name, err)
 			continue
 		}
 		log.Printf("report counter %s success: %d", name, val)
-		_ = resp.Body.Close()
+		_ = resp
 	}
 }
 
 func main() {
 	store := newMetricsStore()
-	client := &http.Client{Timeout: httpTimeout}
+	client := resty.New().SetTimeout(httpTimeout)
 
 	// Initial collection and counters init
 	collectRuntimeMetrics(store)
@@ -161,8 +156,6 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	// Optional: graceful shutdown on SIGINT/SIGTERM is handled by parent process in many setups.
 
 	for {
 		select {

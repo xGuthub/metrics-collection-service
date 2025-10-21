@@ -1,48 +1,54 @@
 package main
 
 import (
+	"context"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/xGuthub/metrics-collection-service/internal/handler"
+	"github.com/xGuthub/metrics-collection-service/internal/repository"
+	"github.com/xGuthub/metrics-collection-service/internal/service"
 )
 
 func main() {
-	go exit()
+	storage := repository.NewMemStorage()
+	metricsService := service.NewMetricsService(storage)
+	metricsHandler := handler.NewMetricsHandler(metricsService)
+	srv := NewServer(metricsHandler)
 
-	srv := NewServer()
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", srv.rootHandler)
+	r := chi.NewRouter()
+	r.Get("/", http.HandlerFunc(srv.serveHome))
+	r.Post("/update/*", http.HandlerFunc(srv.serveUpdate))
+	r.Get("/value/*", http.HandlerFunc(srv.serveGet))
 
 	server := &http.Server{
 		Addr:              "localhost:8080",
-		Handler:           mux,
+		Handler:           r,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	log.Printf("metrics server listening on http://%s", server.Addr)
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatalf("server error: %v", err)
-	}
-}
-
-func exit() {
-	// Create a channel to receive OS signals
-	sig := make(chan os.Signal, 1)
-
-	// Notify channel when user presses Ctrl+C (SIGINT) or termination signal (SIGTERM)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	go func() {
-		<-sig // Wait for signal
-		fmt.Println("\nInterrupted. Exiting gracefully...")
-		os.Exit(0) // Exit with code 0
+		log.Printf("metrics server listening on http://%s", server.Addr)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("server error: %v", err)
+		}
 	}()
 
-	select {} // Block forever
+	<-ctx.Done()
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("graceful shutdown failed: %v", err)
+		_ = server.Close()
+	}
+	log.Printf("server stopped")
 }
