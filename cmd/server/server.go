@@ -26,7 +26,7 @@ func writePlain(w http.ResponseWriter, status int, msg string) {
 	_, _ = w.Write([]byte(msg))
 }
 
-func writeHtml(w http.ResponseWriter, status int, msg string) {
+func writeHTML(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	_, _ = w.Write([]byte(msg))
@@ -42,10 +42,11 @@ func validateContentType(r *http.Request) error {
 	if !strings.HasPrefix(strings.ToLower(ct), "text/plain") {
 		return errors.New("unsupported media type")
 	}
+
 	return nil
 }
 
-// parsePath ожидает строго /update/{type}/{name}/{value}
+// parsePath ожидает строго /update/{type}/{name}/{value}.
 func parsePath(path string) (mType, name, value string, err error) {
 	// Исключаем возможные лишние слэши в конце без редиректов.
 	trimmed := strings.TrimSuffix(path, "/")
@@ -66,6 +67,7 @@ func parsePath(path string) (mType, name, value string, err error) {
 		// Специальный кейс из задания — 404 при отсутствии имени
 		return "", "", "", errors.New("missing name")
 	}
+
 	return mType, name, value, nil
 }
 
@@ -74,12 +76,14 @@ func (s *Server) serveUpdate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		writePlain(w, http.StatusMethodNotAllowed, "method not allowed")
+
 		return
 	}
 
 	// Content-Type
 	if err := validateContentType(r); err != nil {
 		writePlain(w, http.StatusUnsupportedMediaType, "unsupported media type: expected text/plain")
+
 		return
 	}
 
@@ -88,9 +92,11 @@ func (s *Server) serveUpdate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if err.Error() == "missing name" {
 			writePlain(w, http.StatusNotFound, "metric name is required")
+
 			return
 		}
 		writePlain(w, http.StatusNotFound, "not found")
+
 		return
 	}
 
@@ -104,9 +110,11 @@ func (s *Server) serveGet(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if err.Error() == "missing name" {
 			writePlain(w, http.StatusNotFound, "metric name is required")
+
 			return
 		}
 		writePlain(w, http.StatusNotFound, "not found")
+
 		return
 	}
 
@@ -115,8 +123,8 @@ func (s *Server) serveGet(w http.ResponseWriter, r *http.Request) {
 	writePlain(w, code, status)
 }
 
-func (s *Server) ServeHome(w http.ResponseWriter, r *http.Request) {
+func (s *Server) serveHome(w http.ResponseWriter, _ *http.Request) {
 	code, body := s.mHandler.HandleHomePage()
 
-	writeHtml(w, code, body)
+	writeHTML(w, code, body)
 }
