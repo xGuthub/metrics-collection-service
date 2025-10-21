@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -43,6 +44,10 @@ func LoadServerConfigFromFlags() (*ServerConfig, error) {
 	if fs.NArg() > 0 {
 		return nil, fmt.Errorf("unexpected arguments: %v", fs.Args())
 	}
+	// Env override: ADDRESS has highest priority
+	if addr, ok := os.LookupEnv("ADDRESS"); ok && addr != "" {
+		cfg.Address = addr
+	}
 
 	return cfg, nil
 }
@@ -70,6 +75,25 @@ func LoadAgentConfigFromFlags() (*AgentConfig, error) {
 	// Reject leftover args (unknown positional args)
 	if fs.NArg() > 0 {
 		return nil, fmt.Errorf("unexpected arguments: %v", fs.Args())
+	}
+
+	// Env overrides have highest priority
+	if addr, ok := os.LookupEnv("ADDRESS"); ok && addr != "" {
+		cfg.Address = addr
+	}
+	if v, ok := os.LookupEnv("REPORT_INTERVAL"); ok && v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			return nil, fmt.Errorf("invalid REPORT_INTERVAL, must be positive integer seconds: %q", v)
+		}
+		reportSec = n
+	}
+	if v, ok := os.LookupEnv("POLL_INTERVAL"); ok && v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			return nil, fmt.Errorf("invalid POLL_INTERVAL, must be positive integer seconds: %q", v)
+		}
+		pollSec = n
 	}
 
 	if reportSec <= 0 {
