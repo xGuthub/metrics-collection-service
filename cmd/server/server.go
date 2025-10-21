@@ -8,6 +8,7 @@ import (
 
 type UpdateHandler interface {
 	HandleUpdate(mType, name, rawVal string) (code int, status string)
+	HandleGet(mType, name string) (code int, result string)
 }
 
 type Server struct {
@@ -44,13 +45,15 @@ func parsePath(path string) (mType, name, value string, err error) {
 	parts := strings.Split(trimmed, "/")
 	// Примеры:
 	// "" "update" "{type}" "{name}" "{value}"  -> len=5
-	if len(parts) != 5 || parts[1] != "update" {
+	if len(parts) != 4 && len(parts) != 5 {
 		return "", "", "", errors.New("not found")
 	}
 
 	mType = parts[2]
 	name = parts[3]
-	value = parts[4]
+	if len(parts) == 5 {
+		value = parts[4]
+	}
 
 	if name == "" {
 		// Специальный кейс из задания — 404 при отсутствии имени
@@ -89,11 +92,18 @@ func (s *Server) serveUpdate(w http.ResponseWriter, r *http.Request) {
 	writePlain(w, code, status)
 }
 
-func (s *Server) rootHandler(w http.ResponseWriter, r *http.Request) {
-	// Обрабатываем только /update/... остальное — 404
-	if strings.HasPrefix(r.URL.Path, "/update/") || r.URL.Path == "/update" || r.URL.Path == "/update/" {
-		s.serveUpdate(w, r)
+func (s *Server) serveGet(w http.ResponseWriter, r *http.Request) {
+	mType, name, _, err := parsePath(r.URL.Path)
+	if err != nil {
+		if err.Error() == "missing name" {
+			writePlain(w, http.StatusNotFound, "metric name is required")
+			return
+		}
+		writePlain(w, http.StatusNotFound, "not found")
 		return
 	}
-	writePlain(w, http.StatusNotFound, "not found")
+
+	code, status := s.mHandler.HandleGet(mType, name)
+
+	writePlain(w, code, status)
 }
