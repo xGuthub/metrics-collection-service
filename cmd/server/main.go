@@ -22,6 +22,7 @@ func main() {
 	srv := NewServer(metricsHandler)
 
 	r := chi.NewRouter()
+	r.Get("/", http.HandlerFunc(srv.ServeHome))
 	r.Post("/update/*", http.HandlerFunc(srv.serveUpdate))
 	r.Get("/value/*", http.HandlerFunc(srv.serveGet))
 

@@ -9,6 +9,7 @@ import (
 type UpdateHandler interface {
 	HandleUpdate(mType, name, rawVal string) (code int, status string)
 	HandleGet(mType, name string) (code int, result string)
+	HandleHomePage() (code int, body string)
 }
 
 type Server struct {
@@ -21,6 +22,12 @@ func NewServer(h UpdateHandler) *Server {
 
 func writePlain(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(msg))
+}
+
+func writeHtml(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	_, _ = w.Write([]byte(msg))
 }
@@ -106,4 +113,10 @@ func (s *Server) serveGet(w http.ResponseWriter, r *http.Request) {
 	code, status := s.mHandler.HandleGet(mType, name)
 
 	writePlain(w, code, status)
+}
+
+func (s *Server) ServeHome(w http.ResponseWriter, r *http.Request) {
+	code, body := s.mHandler.HandleHomePage()
+
+	writeHtml(w, code, body)
 }
