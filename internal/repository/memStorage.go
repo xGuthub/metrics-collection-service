@@ -31,6 +31,7 @@ func (m *MemStorage) GetGauge(name string) (float64, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	v, ok := m.gauges[name]
+
 	return v, ok
 }
 
@@ -38,6 +39,7 @@ func (m *MemStorage) GetCounter(name string) (int64, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	v, ok := m.counters[name]
+
 	return v, ok
 }
 
@@ -48,6 +50,7 @@ func (m *MemStorage) AllGauges() map[string]float64 {
 	for k, v := range m.gauges {
 		out[k] = v
 	}
+
 	return out
 }
 
@@ -58,5 +61,6 @@ func (m *MemStorage) AllCounters() map[string]int64 {
 	for k, v := range m.counters {
 		out[k] = v
 	}
+
 	return out
 }
