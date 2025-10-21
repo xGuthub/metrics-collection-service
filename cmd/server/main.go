@@ -10,12 +10,19 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/xGuthub/metrics-collection-service/internal/config"
 	"github.com/xGuthub/metrics-collection-service/internal/handler"
 	"github.com/xGuthub/metrics-collection-service/internal/repository"
 	"github.com/xGuthub/metrics-collection-service/internal/service"
 )
 
 func main() {
+	// Load config from flags: -a=<addr>, default localhost:8080
+	srvCfg, err := config.LoadServerConfigFromFlags()
+	if err != nil {
+		log.Fatalf("failed to parse flags: %v", err)
+	}
+
 	storage := repository.NewMemStorage()
 	metricsService := service.NewMetricsService(storage)
 	metricsHandler := handler.NewMetricsHandler(metricsService)
@@ -27,7 +34,7 @@ func main() {
 	r.Get("/value/*", http.HandlerFunc(srv.serveGet))
 
 	server := &http.Server{
-		Addr:              "localhost:8080",
+		Addr:              srvCfg.Address,
 		Handler:           r,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
