@@ -6,12 +6,12 @@ import (
 	"log"
 	"math/rand"
 	"runtime"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/xGuthub/metrics-collection-service/internal/config"
+	models "github.com/xGuthub/metrics-collection-service/internal/model"
 )
 
 const (
@@ -54,6 +54,7 @@ func (s *metricsStore) getSnapshot() (map[string]float64, map[string]int64) {
 	for k, v := range s.counters {
 		c[k] = v
 	}
+
 	return g, c
 }
 
@@ -96,45 +97,56 @@ func collectRuntimeMetrics(store *metricsStore) {
 
 func reportMetrics(ctx context.Context, client *resty.Client, store *metricsStore, baseURL string) {
 	gauges, counters := store.getSnapshot()
-	// Send gauges
+
+	// Endpoint for JSON updates
+	url := fmt.Sprintf("%s/update/", baseURL)
+
+	// Send gauges as JSON one by one
 	for name, val := range gauges {
 		select {
 		case <-ctx.Done():
 			return
 		default:
 		}
-		valueStr := strconv.FormatFloat(val, 'g', -1, 64)
-		url := fmt.Sprintf("%s/update/gauge/%s/%s", baseURL, name, valueStr)
-		resp, err := client.R().
+
+		v := val // create addressable copy
+		payload := models.Metrics{ID: name, MType: models.Gauge, Value: &v}
+
+		_, err := client.R().
 			SetContext(ctx).
-			SetHeader("Content-Type", "text/plain").
+			SetHeader("Content-Type", "application/json").
+			SetBody(payload).
 			Post(url)
 		if err != nil {
 			log.Printf("report gauge %s failed: %v", name, err)
+
 			continue
 		}
-		log.Printf("report gauge %s success: %s", name, valueStr)
-		_ = resp // no body to read; Resty manages resources
+		log.Printf("report gauge %s success", name)
 	}
 
-	// Send counters
+	// Send counters as JSON one by one
 	for name, val := range counters {
 		select {
 		case <-ctx.Done():
 			return
 		default:
 		}
-		url := fmt.Sprintf("%s/update/counter/%s/%d", baseURL, name, val)
-		resp, err := client.R().
+
+		d := val // create addressable copy
+		payload := models.Metrics{ID: name, MType: models.Counter, Delta: &d}
+
+		_, err := client.R().
 			SetContext(ctx).
-			SetHeader("Content-Type", "text/plain").
+			SetHeader("Content-Type", "application/json").
+			SetBody(payload).
 			Post(url)
 		if err != nil {
 			log.Printf("report counter %s failed: %v", name, err)
+
 			continue
 		}
-		log.Printf("report counter %s success: %d", name, val)
-		_ = resp
+		log.Printf("report counter %s success", name)
 	}
 }
 
