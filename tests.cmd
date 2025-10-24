@@ -41,3 +41,10 @@ metricstest.exe -test.v -test.run=^TestIteration6^ ^
     -binary-path=cmd\server\server ^
     -server-port=%SERVER_PORT% ^
     -source-path=.
+
+REM Запускаем тест
+metricstest.exe -test.v -test.run=^TestIteration7^ ^
+    -agent-binary-path=cmd\agent\agent ^
+    -binary-path=cmd\server\server ^
+    -server-port=%SERVER_PORT% ^
+    -source-path=.
