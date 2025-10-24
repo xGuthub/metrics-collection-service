@@ -34,7 +34,9 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(WithLogging)
 	r.Get("/", metricsHandler.HomeHandler)
+	r.Post("/update/", metricsHandler.UpdateJSONHandler)
 	r.Post("/update/*", metricsHandler.UpdateHandler)
+	r.Post("/value/", metricsHandler.ValueJSONHandler)
 	r.Get("/value/*", metricsHandler.ValueHandler)
 
 	server := &http.Server{

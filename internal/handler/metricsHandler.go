@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	models "github.com/xGuthub/metrics-collection-service/internal/model"
 	"github.com/xGuthub/metrics-collection-service/internal/service"
 )
 
@@ -102,6 +104,100 @@ func (mh *MetricsHandler) UpdateHandler(w http.ResponseWriter, r *http.Request) 
 	writePlain(w, http.StatusOK, "OK")
 }
 
+func (mh *MetricsHandler) UpdateJSONHandler(w http.ResponseWriter, r *http.Request) {
+	if err := validateContentType(r, "application/json"); err != nil {
+		writePlain(w, http.StatusUnsupportedMediaType, "unsupported media type: expected application/json")
+
+		return
+	}
+
+	var m models.Metrics
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		writePlain(w, http.StatusBadRequest, "bad value")
+
+		return
+	}
+
+	if m.ID == "" {
+		writePlain(w, http.StatusBadRequest, "bad value")
+
+		return
+	}
+
+	switch m.MType {
+	case models.Gauge:
+		if m.Value == nil {
+			writePlain(w, http.StatusBadRequest, "bad value")
+
+			return
+		}
+		raw := strconv.FormatFloat(*m.Value, 'g', -1, 64)
+		if err := mh.metricsService.UpdateMetric(models.Gauge, m.ID, raw); err != nil {
+			if err.Error() == "bad value" {
+				writePlain(w, http.StatusBadRequest, "bad value")
+
+				return
+			}
+			if err.Error() == "bad metric type" {
+				writePlain(w, http.StatusBadRequest, "bad metric type")
+
+				return
+			}
+		}
+	case models.Counter:
+		if m.Delta == nil {
+			writePlain(w, http.StatusBadRequest, "bad value")
+
+			return
+		}
+		raw := strconv.FormatInt(*m.Delta, 10)
+		if err := mh.metricsService.UpdateMetric(models.Counter, m.ID, raw); err != nil {
+			if err.Error() == "bad value" {
+				writePlain(w, http.StatusBadRequest, "bad value")
+
+				return
+			}
+			if err.Error() == "bad metric type" {
+				writePlain(w, http.StatusBadRequest, "bad metric type")
+
+				return
+			}
+		}
+	default:
+		writePlain(w, http.StatusBadRequest, "bad metric type")
+
+		return
+	}
+
+	// Build JSON response with the current stored value
+	cur, err := mh.metricsService.GetMetric(m.MType, m.ID)
+	if err != nil {
+		if err.Error() == "bad metric type" {
+			writePlain(w, http.StatusBadRequest, "bad metric type")
+
+			return
+		}
+		writePlain(w, http.StatusNotFound, "bad value")
+
+		return
+	}
+
+	switch m.MType {
+	case models.Gauge:
+		if v, err := strconv.ParseFloat(cur, 64); err == nil {
+			m.Value = &v
+		}
+	case models.Counter:
+		if v, err := strconv.ParseInt(cur, 10, 64); err == nil {
+			m.Delta = &v
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(m)
+}
+
 func (mh *MetricsHandler) ValueHandler(w http.ResponseWriter, r *http.Request) {
 	mType, name, _, err := parsePath(r.URL.Path)
 	if err != nil {
@@ -131,6 +227,70 @@ func (mh *MetricsHandler) ValueHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writePlain(w, http.StatusOK, val)
+}
+
+func (mh *MetricsHandler) ValueJSONHandler(w http.ResponseWriter, r *http.Request) {
+	if err := validateContentType(r, "application/json"); err != nil {
+		writePlain(w, http.StatusUnsupportedMediaType, "unsupported media type: expected application/json")
+
+		return
+	}
+
+	var m models.Metrics
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		writePlain(w, http.StatusBadRequest, "bad value")
+
+		return
+	}
+
+	if m.ID == "" {
+		writePlain(w, http.StatusBadRequest, "bad value")
+
+		return
+	}
+
+	switch m.MType {
+	case models.Gauge, models.Counter:
+		// ok
+	default:
+		writePlain(w, http.StatusBadRequest, "bad metric type")
+
+		return
+	}
+
+	cur, err := mh.metricsService.GetMetric(m.MType, m.ID)
+	if err != nil {
+		if err.Error() == "bad metric type" {
+			writePlain(w, http.StatusBadRequest, "bad metric type")
+
+			return
+		}
+		if err.Error() == "not found" {
+			writePlain(w, http.StatusNotFound, "bad value")
+
+			return
+		}
+		writePlain(w, http.StatusBadRequest, "bad value")
+
+		return
+	}
+
+	switch m.MType {
+	case models.Gauge:
+		if v, err := strconv.ParseFloat(cur, 64); err == nil {
+			m.Value = &v
+		}
+		m.Delta = nil
+	case models.Counter:
+		if v, err := strconv.ParseInt(cur, 10, 64); err == nil {
+			m.Delta = &v
+		}
+		m.Value = nil
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(m)
 }
 
 func writeHTML(w http.ResponseWriter, status int, msg string) {
