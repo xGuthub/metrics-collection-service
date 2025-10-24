@@ -30,13 +30,12 @@ func main() {
 	storage := repository.NewMemStorage()
 	metricsService := service.NewMetricsService(storage)
 	metricsHandler := handler.NewMetricsHandler(metricsService)
-	srv := NewServer(metricsHandler)
 
 	r := chi.NewRouter()
 	r.Use(WithLogging)
-	r.Get("/", srv.serveHome)
-	r.Post("/update/*", srv.serveUpdate)
-	r.Get("/value/*", srv.serveGet)
+	r.Get("/", metricsHandler.HomeHandler)
+	r.Get("/update/*", metricsHandler.UpdateHandler)
+	r.Get("/value/*", metricsHandler.ValueHandler)
 
 	server := &http.Server{
 		Addr:              srvCfg.Address,
