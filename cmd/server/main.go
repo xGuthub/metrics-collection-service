@@ -33,6 +33,7 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Use(WithLogging)
+	r.Use(WithGzip)
 	r.Get("/", metricsHandler.HomeHandler)
 	r.Post("/update/", metricsHandler.UpdateJSONHandler)
 	r.Post("/update/*", metricsHandler.UpdateHandler)

@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -112,10 +115,20 @@ func reportMetrics(ctx context.Context, client *resty.Client, store *metricsStor
 		v := val // create addressable copy
 		payload := models.Metrics{ID: name, MType: models.Gauge, Value: &v}
 
-		_, err := client.R().
+		// Marshal and gzip the payload
+		body, err := gzipJSON(payload)
+		if err != nil {
+			log.Printf("prepare gauge %s failed: %v", name, err)
+			continue
+		}
+
+		_, err = client.R().
 			SetContext(ctx).
 			SetHeader("Content-Type", "application/json").
-			SetBody(payload).
+			SetHeader("Content-Encoding", "gzip").
+			// Accept-Encoding is automatically handled by net/http, but setting explicitly is okay
+			SetHeader("Accept-Encoding", "gzip").
+			SetBody(body).
 			Post(url)
 		if err != nil {
 			log.Printf("report gauge %s failed: %v", name, err)
@@ -136,10 +149,19 @@ func reportMetrics(ctx context.Context, client *resty.Client, store *metricsStor
 		d := val // create addressable copy
 		payload := models.Metrics{ID: name, MType: models.Counter, Delta: &d}
 
-		_, err := client.R().
+		// Marshal and gzip the payload
+		body, err := gzipJSON(payload)
+		if err != nil {
+			log.Printf("prepare counter %s failed: %v", name, err)
+			continue
+		}
+
+		_, err = client.R().
 			SetContext(ctx).
 			SetHeader("Content-Type", "application/json").
-			SetBody(payload).
+			SetHeader("Content-Encoding", "gzip").
+			SetHeader("Accept-Encoding", "gzip").
+			SetBody(body).
 			Post(url)
 		if err != nil {
 			log.Printf("report counter %s failed: %v", name, err)
@@ -148,6 +170,26 @@ func reportMetrics(ctx context.Context, client *resty.Client, store *metricsStor
 		}
 		log.Printf("report counter %s success", name)
 	}
+}
+
+// gzipJSON marshals v to JSON and gzips it.
+func gzipJSON(v any) ([]byte, error) {
+	// Marshal to JSON
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	// Compress
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write(b); err != nil {
+		zw.Close()
+		return nil, err
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 func main() {
