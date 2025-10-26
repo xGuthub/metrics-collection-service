@@ -19,7 +19,7 @@ REM Формируем адрес
 set ADDRESS=localhost:%SERVER_PORT%
 
 REM Создаем временный файл
-set TEMP_FILE=%TEMP%\tempfile_$RANDOM.tmp
+set TEMP_FILE=C:\tmp\metrics-db.json
 
 REM Запускаем тест
 metricstest.exe -test.v -test.run=^TestIteration4^ ^
@@ -53,5 +53,13 @@ REM Запускаем тест
 metricstest.exe -test.v -test.run=^TestIteration8^ ^
     -agent-binary-path=cmd\agent\agent ^
     -binary-path=cmd\server\server ^
+    -server-port=%SERVER_PORT% ^
+    -source-path=.
+pause
+REM Запускаем тест
+metricstest.exe -test.v -test.run=^TestIteration9^ ^
+    -agent-binary-path=cmd\agent\agent ^
+    -binary-path=cmd\server\server ^
+    -file-storage-path=%TEMP_FILE% ^
     -server-port=%SERVER_PORT% ^
     -source-path=.
