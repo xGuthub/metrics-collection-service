@@ -2,13 +2,12 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"math"
-	"os"
-	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/xGuthub/metrics-collection-service/internal/repository"
 )
 
 type Storage interface {
@@ -26,6 +25,7 @@ type MetricsService struct {
 	persistPath   string
 	storeInterval time.Duration
 	restore       bool
+	stateStore    repository.StateStore
 }
 
 func NewMetricsService(memStorage Storage) *MetricsService {
@@ -46,6 +46,11 @@ func (ms *MetricsService) ConfigurePersistence(cfg PersistenceConfig) {
 	ms.persistPath = cfg.FilePath
 	ms.storeInterval = cfg.StoreInterval
 	ms.restore = cfg.Restore
+}
+
+// SetStateStore injects the repository responsible for persisting state.
+func (ms *MetricsService) SetStateStore(store repository.StateStore) {
+	ms.stateStore = store
 }
 
 func (ms *MetricsService) AllGauges() map[string]float64 {
@@ -98,7 +103,7 @@ func (ms *MetricsService) UpdateMetric(mType, name, val string) error {
 	}
 	// Immediate save when store interval is zero and path configured.
 	if ms.storeInterval == 0 && ms.persistPath != "" {
-		_ = ms.SaveToFile()
+		_ = ms.SaveState()
 	}
 	return nil
 }
@@ -117,7 +122,7 @@ func (ms *MetricsService) StartAutoSave(ctx context.Context, onError func(error)
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if err := ms.SaveToFile(); err != nil && onError != nil {
+				if err := ms.SaveState(); err != nil && onError != nil {
 					onError(err)
 				}
 			}
@@ -125,63 +130,27 @@ func (ms *MetricsService) StartAutoSave(ctx context.Context, onError func(error)
 	}()
 }
 
-// SaveToFile writes current storage state to configured file.
-func (ms *MetricsService) SaveToFile() error {
-	if ms.persistPath == "" {
+// SaveState persists current storage state via injected repository.
+func (ms *MetricsService) SaveState() error {
+	if ms.persistPath == "" || ms.stateStore == nil {
 		return nil
 	}
-	dump := struct {
-		Gauges   map[string]float64 `json:"gauges"`
-		Counters map[string]int64   `json:"counters"`
-	}{
-		Gauges:   ms.storage.AllGauges(),
-		Counters: ms.storage.AllCounters(),
-	}
-
-	data, err := json.MarshalIndent(dump, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	dir := filepath.Dir(ms.persistPath)
-	if dir != "." && dir != "" {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return err
-		}
-	}
-
-	// Write atomically: write to temp file then rename.
-	tmp := ms.persistPath + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, ms.persistPath)
+	return ms.stateStore.Save(ms.persistPath, ms.storage.AllGauges(), ms.storage.AllCounters())
 }
 
-// RestoreFromFile loads state from configured file if present and allowed.
-func (ms *MetricsService) RestoreFromFile() error {
-	if !ms.restore || ms.persistPath == "" {
+// RestoreState loads persisted state via injected repository.
+func (ms *MetricsService) RestoreState() error {
+	if !ms.restore || ms.persistPath == "" || ms.stateStore == nil {
 		return nil
 	}
-	data, err := os.ReadFile(ms.persistPath)
+	gauges, counters, err := ms.stateStore.Load(ms.persistPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
 		return err
 	}
-	var dump struct {
-		Gauges   map[string]float64 `json:"gauges"`
-		Counters map[string]int64   `json:"counters"`
-	}
-	if err := json.Unmarshal(data, &dump); err != nil {
-		return err
-	}
-	for k, v := range dump.Gauges {
+	for k, v := range gauges {
 		ms.storage.UpdateGauge(k, v)
 	}
-	for k, v := range dump.Counters {
-		// UpdateCounter increments; storage starts empty, so this sets absolute value.
+	for k, v := range counters {
 		ms.storage.UpdateCounter(k, v)
 	}
 	return nil

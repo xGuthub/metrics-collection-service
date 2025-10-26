@@ -29,6 +29,7 @@ func main() {
 
 	storage := repository.NewMemStorage()
 	metricsService := service.NewMetricsService(storage)
+	metricsService.SetStateStore(repository.NewFileStateStore())
 	// Configure persistence based on server config
 	metricsService.ConfigurePersistence(service.PersistenceConfig{
 		FilePath:      srvCfg.FileStoragePath,
@@ -37,7 +38,7 @@ func main() {
 	})
 
 	// Restore state on start if enabled
-	if err := metricsService.RestoreFromFile(); err != nil {
+	if err := metricsService.RestoreState(); err != nil {
 		logger.Log.Errorf("failed to restore metrics: %v", err)
 	}
 	metricsHandler := handler.NewMetricsHandler(metricsService)
@@ -82,7 +83,7 @@ func main() {
 	}
 
 	// Ensure all accumulated metrics are saved on normal shutdown.
-	if err := metricsService.SaveToFile(); err != nil {
+	if err := metricsService.SaveState(); err != nil {
 		logger.Log.Errorf("failed to save metrics on shutdown: %v", err)
 	}
 	logger.Log.Infof("server stopped")
