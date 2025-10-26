@@ -9,14 +9,19 @@ import (
 )
 
 const (
-	reportSecDefault = 10
-	pollSecDefault   = 2
+	reportSecDefault       = 10
+	pollSecDefault         = 2
+	storeIntervaleDefault  = 300
+	FileStoragePathDefault = "/tmp/metrics-db.json"
 )
 
 // ServerConfig holds configuration for the HTTP server.
 type ServerConfig struct {
 	// Address is the listen address, e.g. "localhost:8080".
-	Address string
+	Address         string
+	StoreIntervale  time.Duration
+	FileStoragePath string
+	Restore         bool
 }
 
 // AgentConfig holds configuration for the metrics agent.
@@ -35,7 +40,12 @@ func LoadServerConfigFromFlags() (*ServerConfig, error) {
 
 	cfg := &ServerConfig{}
 
+	var storeSec int
+
 	fs.StringVar(&cfg.Address, "a", "localhost:8080", "HTTP server listen address")
+	fs.IntVar(&storeSec, "i", storeIntervaleDefault, "store interval in seconds")
+	fs.StringVar(&cfg.FileStoragePath, "f", FileStoragePathDefault, "full filename for storage file")
+	fs.BoolVar(&cfg.Restore, "r", true, "restore values on start")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		return nil, err
@@ -48,6 +58,28 @@ func LoadServerConfigFromFlags() (*ServerConfig, error) {
 	if addr, ok := os.LookupEnv("ADDRESS"); ok && addr != "" {
 		cfg.Address = addr
 	}
+	if v, ok := os.LookupEnv("STORE_INTERVAL"); ok && v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return nil, fmt.Errorf("invalid STORE_INTERVAL, must be positive integer seconds or 0: %q", v)
+		}
+		storeSec = n
+	}
+	if filePath, ok := os.LookupEnv("FILE_STORAGE_PATH"); ok && filePath != "" {
+		cfg.FileStoragePath = filePath
+	}
+	if restoreVal, ok := os.LookupEnv("RESTORE"); ok && restoreVal != "" {
+		switch restoreVal {
+		case "true":
+			cfg.Restore = true
+		case "false":
+			cfg.Restore = false
+		default:
+			return nil, fmt.Errorf("invalid RESTORE, must be true or false: %q", restoreVal)
+		}
+	}
+
+	cfg.StoreIntervale = time.Duration(storeSec) * time.Second
 
 	return cfg, nil
 }

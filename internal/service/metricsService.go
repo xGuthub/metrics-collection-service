@@ -1,9 +1,13 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"math"
 	"strconv"
+	"time"
+
+	"github.com/xGuthub/metrics-collection-service/internal/repository"
 )
 
 type Storage interface {
@@ -17,12 +21,36 @@ type Storage interface {
 
 type MetricsService struct {
 	storage Storage
+	// persistence config
+	persistPath   string
+	storeInterval time.Duration
+	restore       bool
+	stateStore    repository.StateStore
 }
 
 func NewMetricsService(memStorage Storage) *MetricsService {
 	return &MetricsService{
 		storage: memStorage,
 	}
+}
+
+// PersistenceConfig describes how and where to persist metrics state.
+type PersistenceConfig struct {
+	FilePath      string
+	StoreInterval time.Duration
+	Restore       bool
+}
+
+// ConfigurePersistence sets up persistence options. Can be called once on boot.
+func (ms *MetricsService) ConfigurePersistence(cfg PersistenceConfig) {
+	ms.persistPath = cfg.FilePath
+	ms.storeInterval = cfg.StoreInterval
+	ms.restore = cfg.Restore
+}
+
+// SetStateStore injects the repository responsible for persisting state.
+func (ms *MetricsService) SetStateStore(store repository.StateStore) {
+	ms.stateStore = store
 }
 
 func (ms *MetricsService) AllGauges() map[string]float64 {
@@ -73,6 +101,57 @@ func (ms *MetricsService) UpdateMetric(mType, name, val string) error {
 	default:
 		return errors.New("bad metric type")
 	}
+	// Immediate save when store interval is zero and path configured.
+	if ms.storeInterval == 0 && ms.persistPath != "" {
+		_ = ms.SaveState()
+	}
+	return nil
+}
 
+// StartAutoSave launches periodic persistence if StoreInterval > 0.
+// onError is optional; if provided, it receives save errors.
+func (ms *MetricsService) StartAutoSave(ctx context.Context, onError func(error)) {
+	if ms.storeInterval <= 0 || ms.persistPath == "" {
+		return
+	}
+	ticker := time.NewTicker(ms.storeInterval)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := ms.SaveState(); err != nil && onError != nil {
+					onError(err)
+				}
+			}
+		}
+	}()
+}
+
+// SaveState persists current storage state via injected repository.
+func (ms *MetricsService) SaveState() error {
+	if ms.persistPath == "" || ms.stateStore == nil {
+		return nil
+	}
+	return ms.stateStore.Save(ms.persistPath, ms.storage.AllGauges(), ms.storage.AllCounters())
+}
+
+// RestoreState loads persisted state via injected repository.
+func (ms *MetricsService) RestoreState() error {
+	if !ms.restore || ms.persistPath == "" || ms.stateStore == nil {
+		return nil
+	}
+	gauges, counters, err := ms.stateStore.Load(ms.persistPath)
+	if err != nil {
+		return err
+	}
+	for k, v := range gauges {
+		ms.storage.UpdateGauge(k, v)
+	}
+	for k, v := range counters {
+		ms.storage.UpdateCounter(k, v)
+	}
 	return nil
 }

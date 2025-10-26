@@ -29,6 +29,18 @@ func main() {
 
 	storage := repository.NewMemStorage()
 	metricsService := service.NewMetricsService(storage)
+	metricsService.SetStateStore(repository.NewFileStateStore())
+	// Configure persistence based on server config
+	metricsService.ConfigurePersistence(service.PersistenceConfig{
+		FilePath:      srvCfg.FileStoragePath,
+		StoreInterval: srvCfg.StoreIntervale,
+		Restore:       srvCfg.Restore,
+	})
+
+	// Restore state on start if enabled
+	if err := metricsService.RestoreState(); err != nil {
+		logger.Log.Errorf("failed to restore metrics: %v", err)
+	}
 	metricsHandler := handler.NewMetricsHandler(metricsService)
 
 	r := chi.NewRouter()
@@ -49,6 +61,11 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Start periodic autosave if configured
+	metricsService.StartAutoSave(ctx, func(err error) {
+		logger.Log.Errorf("autosave error: %v", err)
+	})
+
 	go func() {
 		logger.Log.Infof("metrics server listening on http://%s", server.Addr)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -63,6 +80,11 @@ func main() {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.Log.Infof("graceful shutdown failed: %v", err)
 		_ = server.Close()
+	}
+
+	// Ensure all accumulated metrics are saved on normal shutdown.
+	if err := metricsService.SaveState(); err != nil {
+		logger.Log.Errorf("failed to save metrics on shutdown: %v", err)
 	}
 	logger.Log.Infof("server stopped")
 }
