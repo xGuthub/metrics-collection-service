@@ -27,7 +27,21 @@ func main() {
 		logger.Log.Fatalf("failed to parse flags: %v", err)
 	}
 
-	storage := repository.NewMemStorage()
+	// Choose storage: PostgreSQL if DSN provided, otherwise in-memory
+	var storage service.Storage = repository.NewMemStorage()
+	var pgStorage *repository.PostgresStorage
+	if srvCfg.DatabaseDSN != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		s, err := repository.NewPostgresStorage(ctx, srvCfg.DatabaseDSN)
+		if err != nil {
+			logger.Log.Fatalf("failed to connect postgres: %v", err)
+		}
+		pgStorage = s
+		// Use DB-backed storage
+		storage = s
+		logger.Log.Infof("connected to PostgreSQL")
+	}
 	metricsService := service.NewMetricsService(storage)
 	metricsService.SetStateStore(repository.NewFileStateStore())
 	// Configure persistence based on server config
@@ -46,6 +60,14 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(WithLogging)
 	r.Use(WithGzip)
+
+	// Health check endpoint that verifies DB connectivity
+	var dbPing handler.DBPinger
+	if pgStorage != nil {
+		dbPing = pgStorage
+	}
+	healthHandler := handler.NewHealthHandler(dbPing)
+	r.Get("/ping", healthHandler.PingHandler)
 	r.Get("/", metricsHandler.HomeHandler)
 	r.Post("/update/", metricsHandler.UpdateJSONHandler)
 	r.Post("/update/*", metricsHandler.UpdateHandler)
@@ -85,6 +107,9 @@ func main() {
 	// Ensure all accumulated metrics are saved on normal shutdown.
 	if err := metricsService.SaveState(); err != nil {
 		logger.Log.Errorf("failed to save metrics on shutdown: %v", err)
+	}
+	if pgStorage != nil {
+		_ = pgStorage.Close()
 	}
 	logger.Log.Infof("server stopped")
 }

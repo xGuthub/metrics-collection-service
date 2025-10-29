@@ -63,3 +63,12 @@ metricstest.exe -test.v -test.run=^TestIteration9^ ^
     -file-storage-path=%TEMP_FILE% ^
     -server-port=%SERVER_PORT% ^
     -source-path=.
+pause
+REM Запускаем тест
+metricstest.exe -test.v -test.run=^TestIteration10[AB]^ ^
+    -agent-binary-path=cmd\agent\agent ^
+    -binary-path=cmd\server\server ^
+    -database-dsn=^postgres://postgres:metrics@localhost:5432/postgres?sslmode=disable^ ^
+    -file-storage-path=%TEMP_FILE% ^
+    -server-port=%SERVER_PORT% ^
+    -source-path=.

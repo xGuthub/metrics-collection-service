@@ -22,6 +22,8 @@ type ServerConfig struct {
 	StoreIntervale  time.Duration
 	FileStoragePath string
 	Restore         bool
+	// DatabaseDSN is an optional PostgreSQL DSN (e.g. postgres://user:pass@host:5432/db?sslmode=disable)
+	DatabaseDSN string
 }
 
 // AgentConfig holds configuration for the metrics agent.
@@ -46,6 +48,8 @@ func LoadServerConfigFromFlags() (*ServerConfig, error) {
 	fs.IntVar(&storeSec, "i", storeIntervaleDefault, "store interval in seconds")
 	fs.StringVar(&cfg.FileStoragePath, "f", FileStoragePathDefault, "full filename for storage file")
 	fs.BoolVar(&cfg.Restore, "r", true, "restore values on start")
+	// Optional PostgreSQL DSN; when provided, server will use DB storage
+	fs.StringVar(&cfg.DatabaseDSN, "d", "", "PostgreSQL connection DSN (e.g. postgres://user:pass@host:5432/db?sslmode=disable)")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		return nil, err
@@ -77,6 +81,11 @@ func LoadServerConfigFromFlags() (*ServerConfig, error) {
 		default:
 			return nil, fmt.Errorf("invalid RESTORE, must be true or false: %q", restoreVal)
 		}
+	}
+
+	// Optional env override for DB DSN
+	if dsn, ok := os.LookupEnv("DATABASE_DSN"); ok && dsn != "" {
+		cfg.DatabaseDSN = dsn
 	}
 
 	cfg.StoreIntervale = time.Duration(storeSec) * time.Second
